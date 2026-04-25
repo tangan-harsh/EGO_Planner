@@ -15,7 +15,7 @@ def generate_launch_description() -> LaunchDescription:
         namespace_arg,
         drone_id_arg,
         Node(
-            package="pid_control_pkg",
+            package="pid_control_ego_pkg",
             executable="position_pid_controller",
             name="position_pid_controller",
             output="screen",

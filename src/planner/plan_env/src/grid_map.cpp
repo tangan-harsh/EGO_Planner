@@ -799,7 +799,8 @@ void GridMap::odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
   md_.camera_pos_(0) = odom->pose.pose.position.x;
   md_.camera_pos_(1) = odom->pose.pose.position.y;
   md_.camera_pos_(2) = odom->pose.pose.position.z;
-
+  // RCLCPP_INFO(node_->get_logger(), "odom callback: camera_pos = [%f, %f, %f]", md_.camera_pos_(0),
+  //             md_.camera_pos_(1), md_.camera_pos_(2));
   md_.has_odom_ = true;
 }
 

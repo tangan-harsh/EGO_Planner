@@ -1,6 +1,9 @@
 
 #include <ego_planner/ego_replan_fsm.h>
 
+#include <cmath>
+#include <limits>
+
 namespace ego_planner
 {
 
@@ -17,6 +20,9 @@ namespace ego_planner
     have_target_ = false;
     have_odom_ = false;
     have_recv_pre_agent_ = false;
+    have_hover_target_ = false;
+    current_yaw_deg_ = 0.0;
+    planned_target_yaw_deg_ = std::numeric_limits<double>::quiet_NaN();
 
     // 声明 FSM 参数（若外部未配置则使用默认值）。
     node_->declare_parameter("fsm/flight_type", -1);
@@ -125,6 +131,10 @@ namespace ego_planner
     bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/bspline", 10);
     data_disp_pub_ = node_->create_publisher<traj_utils::msg::DataDisp>("planning/data_display", 100);
 
+    // 发布控制模式给仲裁器
+    control_mode_pub_ = node_->create_publisher<std_msgs::msg::UInt8>("control_mode", 10);
+    target_position_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>("target_position", 10);
+
     // 手动目标模式：订阅 RViz 2D Goal 作为目标点输入。
     if (target_type_ == TARGET_TYPE::MANUAL_TARGET)
     {
@@ -140,7 +150,7 @@ namespace ego_planner
     else if (target_type_ == TARGET_TYPE::PRESET_TARGET)
     {
       trigger_sub_ = node_->create_subscription<std_msgs::msg::UInt8>(
-          "/drone_command",
+          "is_st_ready",
           1,
           [this](const std::shared_ptr<const std_msgs::msg::UInt8> &msg)
           {
@@ -226,6 +236,7 @@ namespace ego_planner
       end_vel_.setZero();
       have_target_ = true;
       have_new_target_ = true;
+      have_hover_target_ = true;
 
       // FSM 状态切换策略：
       // 1) 若当前在 WAIT_TARGET，直接进入 GEN_NEW_TRAJ 触发首次局部轨迹生成；
@@ -275,6 +286,11 @@ namespace ego_planner
 
     init_pt_ = odom_pos_;
 
+    const auto &q = msg->pose.orientation;
+    const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+    const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+    planned_target_yaw_deg_ = std::atan2(siny_cosp, cosy_cosp) * 180.0 / M_PI;
+
     Eigen::Vector3d end_wp(msg->pose.position.x, msg->pose.position.y, 1.0);
 
     planNextWaypoint(end_wp);
@@ -296,6 +312,11 @@ namespace ego_planner
     odom_orient_.x() = msg->pose.pose.orientation.x;
     odom_orient_.y() = msg->pose.pose.orientation.y;
     odom_orient_.z() = msg->pose.pose.orientation.z;
+
+    const auto &q = msg->pose.pose.orientation;
+    const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+    const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+    current_yaw_deg_ = std::atan2(siny_cosp, cosy_cosp) * 180.0 / M_PI;
 
     have_odom_ = true;
   }
@@ -538,10 +559,16 @@ namespace ego_planner
     {
       // 等待目标与触发信号同时就绪。
       // have_target_ 表示已有可用目标，have_trigger_ 常用于实机触发保护。
+      if(!have_target_ && have_hover_target_)
+      {
+          publishHoverTargetFromLastWaypoint();
+          publishControlMode(1); // HOVER
+      }
       if (!have_target_ || !have_trigger_)
         goto force_return;
       else
       {
+        publishHoverTargetFromLastWaypoint();
         // 条件满足后进入编队顺序起飞阶段。
         changeFSMExecState(SEQUENTIAL_START, "FSM");
       }
@@ -589,7 +616,9 @@ namespace ego_planner
       bool success = planFromGlobalTraj(10); // zx-todo
       if (success)
       {
+        publishHoverTargetFromLastWaypoint();
         changeFSMExecState(EXEC_TRAJ, "FSM");
+        publishControlMode(0); // TRACK_TRAJ
         // 允许 EMERGENCY_STOP 状态中执行一次真正的急停轨迹下发。
         flag_escape_emergency_ = true;
         publishSwarmTrajs(false);
@@ -608,7 +637,9 @@ namespace ego_planner
       // 基于当前已执行轨迹的时刻点进行滚动重规划。
       if (planFromCurrentTraj(1))
       {
+        publishHoverTargetFromLastWaypoint();
         changeFSMExecState(EXEC_TRAJ, "FSM");
+        publishControlMode(0); // TRACK_TRAJ
         publishSwarmTrajs(false);
       }
       else
@@ -675,6 +706,7 @@ namespace ego_planner
 
     case EMERGENCY_STOP:
     {
+      publishControlMode(2); // EMERGENCY
 
       // 急停态：第一次进入时下发急停轨迹；后续等待速度降低后尝试恢复规划。
       if (flag_escape_emergency_) // Avoiding repeated calls
@@ -1052,6 +1084,32 @@ namespace ego_planner
     {
       local_target_vel_ = planner_manager_->global_data_.getVelocity(t);
     }
+  }
+
+  void EGOReplanFSM::publishControlMode(uint8_t mode)
+  {
+    auto msg = std_msgs::msg::UInt8();
+    msg.data = mode;
+    control_mode_pub_->publish(msg);
+    RCLCPP_DEBUG(node_->get_logger(), "Published control mode: %d", mode);
+  }
+
+  void EGOReplanFSM::publishHoverTargetFromLastWaypoint()
+  {
+    if (!have_hover_target_)
+    {
+      return;
+    }
+
+    const double hover_yaw_deg = 0.0;
+
+    std_msgs::msg::Float32MultiArray msg;
+    msg.data.resize(4);
+    msg.data[0] = static_cast<float>(end_pt_(0) * 100.0);
+    msg.data[1] = static_cast<float>(end_pt_(1) * 100.0);
+    msg.data[2] = static_cast<float>(end_pt_(2) * 100.0);
+    msg.data[3] = static_cast<float>(hover_yaw_deg);
+    target_position_pub_->publish(msg);
   }
 
 

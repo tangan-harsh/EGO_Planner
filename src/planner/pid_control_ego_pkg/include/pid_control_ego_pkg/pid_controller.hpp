@@ -6,15 +6,14 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/int16.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
+#include <quadrotor_msgs/msg/position_command.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 namespace pid_control_pkg
 {
@@ -77,30 +76,27 @@ private:
   void activeControllerCallback(const std_msgs::msg::UInt8::SharedPtr msg);
   void bluetoothCallback(const std_msgs::msg::UInt8MultiArray::SharedPtr msg);
   void heightCallback(const std_msgs::msg::Int16::SharedPtr msg);
+  void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
   void controlTimerCallback();
 
-  bool getCurrentPose();
   void loadParameters();
   void calculateErrors();
   double normalizeAngleDeg(double angle_deg) const;
   bool isTargetReached() const;
   void setControlMode(ControlMode mode);
-  std_msgs::msg::Float32MultiArray processPID(double dt);
+  quadrotor_msgs::msg::PositionCommand processPIDPositionCommand(double dt);
 
   inline double meterToCm(double meter) const { return meter * 100.0; }
+  inline double cmToMeter(double cm) const { return cm / 100.0; }
   inline double radToDeg(double rad) const { return rad * 180.0 / M_PI; }
+  inline double degToRad(double deg) const { return deg * M_PI / 180.0; }
 
   // ROS interfaces
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr target_position_sub_;
-  // rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr active_controller_sub_;
-  // rclcpp::Subscription<std_msgs::msg::UInt8MultiArray>::SharedPtr bluetooth_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<std_msgs::msg::Int16>::SharedPtr height_sub_;
-  rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr target_velocity_pub_;
+  rclcpp::Publisher<quadrotor_msgs::msg::PositionCommand>::SharedPtr position_cmd_pub_;
   rclcpp::TimerBase::SharedPtr control_timer_;
-
-  // TF
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   bool enable_visual_fine_tune_;   // <<< 总开关
   // PID controllers

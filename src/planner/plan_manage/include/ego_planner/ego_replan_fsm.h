@@ -9,6 +9,7 @@
 #include "sensor_msgs/msg/imu.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/empty.hpp"
+#include "std_msgs/msg/float32_multi_array.hpp"
 #include "std_msgs/msg/u_int8.hpp"
 #include <vector>
 #include "visualization_msgs/msg/marker.hpp"
@@ -67,6 +68,7 @@ namespace ego_planner
 
     /* planning data */
     bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;
+    bool have_hover_target_;
     FSM_EXEC_STATE exec_state_;
     int continously_called_times_{0};
 
@@ -76,6 +78,8 @@ namespace ego_planner
     Eigen::Vector3d init_pt_, start_pt_, start_vel_, start_acc_, start_yaw_; // start state
     Eigen::Vector3d end_pt_, end_vel_;                                       // goal state
     Eigen::Vector3d local_target_pt_, local_target_vel_;                     // local target state
+    double current_yaw_deg_;
+    double planned_target_yaw_deg_;
     std::vector<Eigen::Vector3d> wps_;
     int current_wp_;
 
@@ -97,6 +101,8 @@ namespace ego_planner
     rclcpp::Publisher<traj_utils::msg::DataDisp>::SharedPtr data_disp_pub_;
     rclcpp::Publisher<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_pub_;
     rclcpp::Publisher<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_pub_;
+    rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr control_mode_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr target_position_pub_;
 
     /* helper functions */
     bool callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj); // front-end and back-end method
@@ -124,6 +130,8 @@ namespace ego_planner
 
     bool checkCollision();
     void publishSwarmTrajs(bool startup_pub);
+    void publishControlMode(uint8_t mode);
+    void publishHoverTargetFromLastWaypoint();
 
   public:
     EGOReplanFSM(/* args */)

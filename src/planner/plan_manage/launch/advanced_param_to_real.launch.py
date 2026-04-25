@@ -93,7 +93,7 @@ def generate_launch_description():
     common_parameters = [
             {'fsm/flight_type': flight_type},
             {'fsm/thresh_replan_time': 1.0},
-            {'fsm/thresh_no_replan_meter': 0.4},
+            {'fsm/thresh_no_replan_meter': 0.3},
             {'fsm/planning_horizon': planning_horizon},
             {'fsm/planning_horizen_time': 3.0},
             {'fsm/emergency_time': 1.0},
@@ -149,12 +149,12 @@ def generate_launch_description():
             {'grid_map/virtual_ceil_height': 2.9},
             {'grid_map/visualization_truncate_height': 1.8},
             {'grid_map/show_occ_time': False},
-            {'grid_map/pose_type': 1},
+            {'grid_map/pose_type': 2},
             {'grid_map/frame_id': "world"},
             {'manager/max_vel': max_vel},
             {'manager/max_acc': max_acc},
             {'manager/max_jerk': 4.0},
-            {'manager/control_points_distance': 0.4},# B-spline控制点期望间距
+            {'manager/control_points_distance': 0.025},# B-spline控制点期望间距
             {'manager/feasibility_tolerance': 0.05},# 速度和加速度超限容忍比例
             {'manager/planning_horizon': planning_horizon},
             {'manager/use_distinctive_trajs': use_distinctive_trajs},
@@ -183,9 +183,11 @@ def generate_launch_description():
         namespace=namespace,
         output='screen',
         remappings=[
-            ('odom_world', ['drone_', drone_id, '_', odometry_topic]),
+            ('odom_world', ['drone_', drone_id, '_', 'Odom_high_fre']),
             ('planning/bspline', ['drone_', drone_id, '_planning/bspline']),
             ('planning/data_display', ['drone_', drone_id, '_planning/data_display']),
+            ('control_mode', ['drone_', drone_id, '_planning/control_mode']),
+            ('target_position', ['drone_', drone_id, '_planning/target_position']),
             ('planning/broadcast_bspline_from_planner', '/broadcast_bspline'),
             ('planning/broadcast_bspline_to_planner', '/broadcast_bspline'),
             
@@ -195,7 +197,7 @@ def generate_launch_description():
             ('optimal_list', ['drone_', drone_id, '_plan_vis/optimal_list']),
             ('a_star_list', ['drone_', drone_id, '_plan_vis/a_star_list']),
             
-            ('grid_map/odom', ['drone_', drone_id, '_', odometry_topic]),
+            ('grid_map/odom', ['drone_', drone_id, '_', 'Odom_high_fre']),
             ('grid_map/cloud', ['drone_', drone_id, '_', cloud_topic]),
             ('grid_map/pose', ['drone_', drone_id, '_', camera_pose_topic]),
             ('grid_map/depth', ['drone_', drone_id, '_', depth_topic]),
